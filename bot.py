@@ -1,10 +1,8 @@
 import os
 import time
-import numpy as np
 import requests
-import joblib
+import numpy as np
 from telegram import Bot
-from sklearn.neural_network import MLPClassifier
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -14,76 +12,81 @@ if not TOKEN or not CHAT_ID:
 
 bot = Bot(token=TOKEN)
 
-MODEL_FILE = "model.pkl"
-LAST_SIGNAL = None
+ASSETS = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum"
+}
 
-def get_data():
+LAST_SIGNAL = {}
+
+def get_market_data(coin_id):
     try:
-        url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-        params = {"vs_currency": "usd", "days": "60"}
+        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+        params = {"vs_currency": "usd", "days": "30"}
         r = requests.get(url, params=params, timeout=10)
-        data = r.json().get("prices", [])
-        prices = [p[1] for p in data]
+        prices = [p[1] for p in r.json()["prices"]]
         return prices
     except:
         return None
 
-def train_model(prices):
-    X = []
-    y = []
+def calculate_rsi(prices, period=14):
+    deltas = np.diff(prices)
+    gains = deltas[deltas > 0]
+    losses = -deltas[deltas < 0]
 
-    for i in range(10, len(prices)-1):
-        features = prices[i-10:i]
-        label = 1 if prices[i+1] > prices[i] else 0
-        X.append(features)
-        y.append(label)
+    avg_gain = np.mean(gains) if len(gains) > 0 else 0
+    avg_loss = np.mean(losses) if len(losses) > 0 else 0
 
-    model = MLPClassifier(hidden_layer_sizes=(50,50), max_iter=500)
-    model.fit(X, y)
-    joblib.dump(model, MODEL_FILE)
-    return model
+    if avg_loss == 0:
+        return 100
 
-def load_or_train():
-    prices = get_data()
-    if prices is None or len(prices) < 20:
-        return None
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
 
-    if os.path.exists(MODEL_FILE):
-        return joblib.load(MODEL_FILE)
+def detect_market_trend(prices):
+    short_ma = np.mean(prices[-5:])
+    long_ma = np.mean(prices[-20:])
+
+    if short_ma > long_ma:
+        return "Bull 🟢"
+    elif short_ma < long_ma:
+        return "Bear 🔴"
     else:
-        return train_model(prices)
+        return "Lateral ⚪"
 
-model = load_or_train()
-
-if model is None:
-    raise Exception("Erro ao carregar modelo.")
-
-bot.send_message(chat_id=CHAT_ID, text="🧠 IA Profissional Ativada!")
-
-last_retrain = time.time()
+bot.send_message(chat_id=CHAT_ID, text="🚀 Sistema Inteligente Ativado!")
 
 while True:
     try:
-        prices = get_data()
-        if prices is None or len(prices) < 10:
-            time.sleep(60)
-            continue
+        for symbol, coin_id in ASSETS.items():
 
-        latest = prices[-10:]
-        prediction = model.predict([latest])[0]
+            prices = get_market_data(coin_id)
+            if prices is None or len(prices) < 20:
+                continue
 
-        signal = "ALTA 🚀" if prediction == 1 else "QUEDA 🔻"
+            rsi = calculate_rsi(prices)
+            trend = detect_market_trend(prices)
+            current_price = round(prices[-1], 2)
 
-        global LAST_SIGNAL
-        if signal != LAST_SIGNAL:
-            bot.send_message(chat_id=CHAT_ID, text=f"📊 IA prevê {signal}")
-            LAST_SIGNAL = signal
+            signal = None
 
-        # Re-treina a cada 6 horas
-        if time.time() - last_retrain > 21600:
-            model = train_model(prices)
-            last_retrain = time.time()
-            bot.send_message(chat_id=CHAT_ID, text="🔄 IA re-treinada automaticamente")
+            if rsi < 30 and trend == "Bull 🟢":
+                signal = "COMPRA 🟢"
+            elif rsi > 70 and trend == "Bear 🔴":
+                signal = "VENDA 🔴"
+
+            if signal and LAST_SIGNAL.get(symbol) != signal:
+                bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=f"""
+📊 Ativo: {symbol}
+Preço: ${current_price}
+RSI: {round(rsi,2)}
+Tendência: {trend}
+Sinal: {signal}
+"""
+                )
+                LAST_SIGNAL[symbol] = signal
 
         time.sleep(300)
 
