@@ -1,11 +1,17 @@
+import os
+from telegram import Bot
 
-from flask import Flask
+# Pega as variáveis do Render
+TOKEN = os.getenv("TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-app = Flask(__name__)
+# Cria o bot
+bot = Bot(token=TOKEN)
 
-@app.route("/")
-def home():
-    return "CryptoRadar online 🚀"
+# Envia mensagem automática
+bot.send_message(
+    chat_id=CHAT_ID,
+    text="🚀 CryptoRadar está online e funcionando!"
+)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+print("Mensagem enviada com sucesso.")
