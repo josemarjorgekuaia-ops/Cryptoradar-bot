@@ -6,24 +6,27 @@ from telegram import Bot
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
+if not TOKEN or not CHAT_ID:
+    raise ValueError("TOKEN ou CHAT_ID não configurados nas variáveis de ambiente.")
+
 bot = Bot(token=TOKEN)
 
 def get_price():
     url = "https://api.coingecko.com/api/v3/simple/price"
     params = {"ids": "bitcoin", "vs_currencies": "usd"}
-    return requests.get(url, params=params).json()["bitcoin"]["usd"]
+    response = requests.get(url, params=params, timeout=10)
+    return response.json()["bitcoin"]["usd"]
 
 def get_rsi():
     url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
     params = {"vs_currency": "usd", "days": "14"}
-    data = requests.get(url, params=params).json()
-    prices = [p[1] for p in data["prices"]]
+    response = requests.get(url, params=params, timeout=10)
+    prices = [p[1] for p in response.json()["prices"]]
 
-    gains = []
-    losses = []
+    gains, losses = [], []
 
     for i in range(1, len(prices)):
-        change = prices[i] - prices[i-1]
+        change = prices[i] - prices[i - 1]
         if change > 0:
             gains.append(change)
         else:
@@ -38,22 +41,24 @@ def get_rsi():
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
+# Mensagem ao iniciar
+bot.send_message(chat_id=CHAT_ID, text="🤖 Sistema Profissional Iniciado com Sucesso!")
+
 while True:
     try:
         price = get_price()
         rsi = get_rsi()
 
-        # Só envia sinal forte
         if rsi < 30:
             bot.send_message(
                 chat_id=CHAT_ID,
-                text=f"🟢 SINAL DE COMPRA\nPreço: ${price}\nRSI: {round(rsi,2)}"
+                text=f"🟢 SINAL FORTE DE COMPRA\nPreço: ${price}\nRSI: {round(rsi,2)}"
             )
 
         elif rsi > 70:
             bot.send_message(
                 chat_id=CHAT_ID,
-                text=f"🔴 SINAL DE VENDA\nPreço: ${price}\nRSI: {round(rsi,2)}"
+                text=f"🔴 SINAL FORTE DE VENDA\nPreço: ${price}\nRSI: {round(rsi,2)}"
             )
 
         time.sleep(300)
