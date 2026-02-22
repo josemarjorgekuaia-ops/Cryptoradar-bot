@@ -36,24 +36,25 @@ def get_rsi():
         return 100
 
     rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    return 100 - (100 / (1 + rs))
 
 while True:
     try:
         price = get_price()
         rsi = get_rsi()
 
-        message = f"📊 Bitcoin\nPreço: ${price}\nRSI: {round(rsi,2)}\n"
-
+        # Só envia sinal forte
         if rsi < 30:
-            message += "🟢 SINAL DE COMPRA"
-        elif rsi > 70:
-            message += "🔴 SINAL DE VENDA"
-        else:
-            message += "⚪ Mercado neutro"
+            bot.send_message(
+                chat_id=CHAT_ID,
+                text=f"🟢 SINAL DE COMPRA\nPreço: ${price}\nRSI: {round(rsi,2)}"
+            )
 
-        bot.send_message(chat_id=CHAT_ID, text=message)
+        elif rsi > 70:
+            bot.send_message(
+                chat_id=CHAT_ID,
+                text=f"🔴 SINAL DE VENDA\nPreço: ${price}\nRSI: {round(rsi,2)}"
+            )
 
         time.sleep(300)
 
