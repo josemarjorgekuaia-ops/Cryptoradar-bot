@@ -1,8 +1,8 @@
 import os
-import asyncio
-import json
-import websockets
+import numpy as np
+import requests
 from telegram import Bot
+from sklearn.ensemble import RandomForestClassifier
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -12,27 +12,40 @@ if not TOKEN or not CHAT_ID:
 
 bot = Bot(token=TOKEN)
 
-SYMBOL = "btcusdt"  # Bitcoin em tempo real
+def get_price_history():
+    url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+    params = {"vs_currency": "usd", "days": "30"}
+    r = requests.get(url, params=params)
+    prices = [p[1] for p in r.json()["prices"]]
+    return prices
 
-async def run():
-    url = f"wss://stream.binance.com:9443/ws/{SYMBOL}@trade"
+def train_model(prices):
+    X = []
+    y = []
 
-    bot.send_message(chat_id=CHAT_ID, text="🚀 Sistema Tempo Real Ativo!")
+    for i in range(5, len(prices)-1):
+        features = prices[i-5:i]
+        label = 1 if prices[i+1] > prices[i] else 0
+        X.append(features)
+        y.append(label)
 
-    async with websockets.connect(url) as websocket:
-        while True:
-            data = await websocket.recv()
-            trade = json.loads(data)
+    model = RandomForestClassifier()
+    model.fit(X, y)
+    return model
 
-            price = trade["p"]
+bot.send_message(chat_id=CHAT_ID, text="🧠 IA Profissional Iniciada!")
 
-            print("Preço:", price)
+prices = get_price_history()
+model = train_model(prices)
 
-            # Envia alerta exemplo (você pode melhorar depois)
-            if float(price) % 100 == 0:
-                bot.send_message(
-                    chat_id=CHAT_ID,
-                    text=f"📊 BTC Preço: ${price}"
-                )
+while True:
+    latest = get_price_history()[-5:]
+    prediction = model.predict([latest])[0]
 
-asyncio.run(run())
+    if prediction == 1:
+        bot.send_message(chat_id=CHAT_ID, text="📈 IA prevê ALTA 🔵")
+    else:
+        bot.send_message(chat_id=CHAT_ID, text="📉 IA prevê QUEDA 🔴")
+
+    import time
+    time.sleep(300)
