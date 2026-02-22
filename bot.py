@@ -15,13 +15,18 @@ if not TOKEN or not CHAT_ID:
 bot = Bot(token=TOKEN)
 
 MODEL_FILE = "model.pkl"
+LAST_SIGNAL = None
 
 def get_data():
-    url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-    params = {"vs_currency": "usd", "days": "60"}
-    r = requests.get(url, params=params)
-    prices = [p[1] for p in r.json()["prices"]]
-    return prices
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+        params = {"vs_currency": "usd", "days": "60"}
+        r = requests.get(url, params=params, timeout=10)
+        data = r.json().get("prices", [])
+        prices = [p[1] for p in data]
+        return prices
+    except:
+        return None
 
 def train_model(prices):
     X = []
@@ -38,23 +43,50 @@ def train_model(prices):
     joblib.dump(model, MODEL_FILE)
     return model
 
-# Carregar ou treinar
-if os.path.exists(MODEL_FILE):
-    model = joblib.load(MODEL_FILE)
-else:
+def load_or_train():
     prices = get_data()
-    model = train_model(prices)
+    if prices is None or len(prices) < 20:
+        return None
 
-bot.send_message(chat_id=CHAT_ID, text="🧠 IA Deep Learning Ativada!")
+    if os.path.exists(MODEL_FILE):
+        return joblib.load(MODEL_FILE)
+    else:
+        return train_model(prices)
+
+model = load_or_train()
+
+if model is None:
+    raise Exception("Erro ao carregar modelo.")
+
+bot.send_message(chat_id=CHAT_ID, text="🧠 IA Profissional Ativada!")
+
+last_retrain = time.time()
 
 while True:
-    prices = get_data()
-    latest = prices[-10:]
-    prediction = model.predict([latest])[0]
+    try:
+        prices = get_data()
+        if prices is None or len(prices) < 10:
+            time.sleep(60)
+            continue
 
-    if prediction == 1:
-        bot.send_message(chat_id=CHAT_ID, text="📈 IA prevê ALTA 🚀")
-    else:
-        bot.send_message(chat_id=CHAT_ID, text="📉 IA prevê QUEDA 🔻")
+        latest = prices[-10:]
+        prediction = model.predict([latest])[0]
 
-    time.sleep(300)
+        signal = "ALTA 🚀" if prediction == 1 else "QUEDA 🔻"
+
+        global LAST_SIGNAL
+        if signal != LAST_SIGNAL:
+            bot.send_message(chat_id=CHAT_ID, text=f"📊 IA prevê {signal}")
+            LAST_SIGNAL = signal
+
+        # Re-treina a cada 6 horas
+        if time.time() - last_retrain > 21600:
+            model = train_model(prices)
+            last_retrain = time.time()
+            bot.send_message(chat_id=CHAT_ID, text="🔄 IA re-treinada automaticamente")
+
+        time.sleep(300)
+
+    except Exception as e:
+        print("Erro:", e)
+        time.sleep(60)
